@@ -2,17 +2,13 @@ import os
 from typing import Any, Dict, List
 from sqlalchemy.orm import Session
 from dotenv import load_dotenv
+import requests
 
 from models import Interaction
 
 load_dotenv()
 
-try:
-    from groq import Groq
-except Exception:
-    Groq = None
-
-client = Groq(api_key=os.getenv("GROQ_API_KEY", "")) if Groq else None
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
 
 def log_interaction(db: Session, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -67,23 +63,26 @@ def summarize_interaction(db: Session, interaction_id: int) -> Dict[str, Any]:
     if interaction.summary:
         return {"summary": interaction.summary}
 
-    if client and getattr(client, "api_key", None):
+    if GROQ_API_KEY:
         try:
-            response = client.chat.completions.create(
-                model="gemma2-9b-it",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "Summarize the interaction as a concise CRM note.",
-                    },
-                    {
-                        "role": "user",
-                        "content": f"HCP: {interaction.hcp_name}\nType: {interaction.interaction_type}\nOutcome: {interaction.outcome}\nTopics: {interaction.topics_discussed}",
-                    },
-                ],
-                temperature=0.2,
+            response = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {GROQ_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "gemma2-9b-it",
+                    "messages": [
+                        {"role": "system", "content": "Summarize the interaction as a concise CRM note."},
+                        {"role": "user", "content": f"HCP: {interaction.hcp_name}\nType: {interaction.interaction_type}\nOutcome: {interaction.outcome}\nTopics: {interaction.topics_discussed}"},
+                    ],
+                    "temperature": 0.2,
+                },
+                timeout=20,
             )
-            summary = response.choices[0].message.content
+            response.raise_for_status()
+            summary = response.json()["choices"][0]["message"]["content"]
         except Exception:
             summary = "AI summary unavailable; stored interaction details are available."
     else:
