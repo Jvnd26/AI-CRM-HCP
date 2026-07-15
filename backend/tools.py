@@ -1,14 +1,18 @@
 import os
 from typing import Any, Dict, List
 from sqlalchemy.orm import Session
-from groq import Groq
 from dotenv import load_dotenv
 
 from models import Interaction
 
 load_dotenv()
 
-client = Groq(api_key=os.getenv("GROQ_API_KEY", ""))
+try:
+    from groq import Groq
+except Exception:
+    Groq = None
+
+client = Groq(api_key=os.getenv("GROQ_API_KEY", "")) if Groq else None
 
 
 def log_interaction(db: Session, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -63,7 +67,7 @@ def summarize_interaction(db: Session, interaction_id: int) -> Dict[str, Any]:
     if interaction.summary:
         return {"summary": interaction.summary}
 
-    if client.api_key:
+    if client and getattr(client, "api_key", None):
         try:
             response = client.chat.completions.create(
                 model="gemma2-9b-it",
